@@ -18,8 +18,6 @@ How can deep learning-based object detection and segmentation be utilized to ide
 - Generate pixel-level segmentation masks for each detected object using SAM.
 - Classify segmented regions into surface types (e.g., asphalt, vegetation, concrete).
 - Calculate surface area coverage of each material type using mask and bounding box data.
-- Store processed data in a structured format for integration with IoT-based urban monitoring systems.
-- (Planned) Develop a mobile application to streamline image capture and analysis in real-world environments.
 
 ---
 
