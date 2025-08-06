@@ -13,11 +13,18 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
+from torchvision import transforms
+from efficientnet_pytorch import EfficientNet
+from PIL import Image as PILImage
+
 
 
 
 app = Flask(__name__)
 CORS(app, resources={r"/api/*": {"origins": ["http://localhost:3000"]}}, supports_credentials=True)
+
+material_model = None
+material_class_names = ['asphalt', 'concrete', 'glass'] 
 
 # Configuration
 app.config['UPLOAD_FOLDER'] = 'uploads'
@@ -49,10 +56,35 @@ class_names = {
     3: 'vegetation',
     4: 'wall'
 }
+def initialize_material_model():
+    """Initialize the material classification model"""
+    global material_model
+    
+    print("Loading material classification model...")
+    model_path = "weights/material_classifier_effnet_b3.pth" 
+    
+    # Initialize model architecture
+    material_model = EfficientNet.from_pretrained('efficientnet-b3', num_classes=3)
+    
+    # Load state dict
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    material_model.load_state_dict(torch.load(model_path, map_location=device))
+    material_model = material_model.to(device)
+    material_model.eval()
+    print("Material classification model loaded successfully")
+
+# Add this transform definition (put it near your other configuration)
+material_transform = transforms.Compose([
+    transforms.ToPILImage(),
+    transforms.Resize(256),
+    transforms.CenterCrop(224),
+    transforms.ToTensor(),
+    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+])
 
 def initialize_models():
-    """Initialize YOLO and SAM models"""
-    global model, sam, predictor
+    """Initialize all models"""
+    global model, sam, predictor, material_model
     
     # Load YOLO model
     print("Loading YOLO model...")
@@ -65,7 +97,11 @@ def initialize_models():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     sam.to(device)
     predictor = SamPredictor(sam)
-    print("Models loaded successfully")
+    
+    # Load material classification model
+    initialize_material_model()
+    
+    print("All models loaded successfully")
 
 def process_image(image):
     """Process image with YOLO and SAM models"""
@@ -236,6 +272,54 @@ def list_classes():
             for k, v in class_names.items()
         ]
     })
+
+@app.route('/api/classify/material', methods=['POST'])
+def classify_material():
+    """API endpoint for material classification"""
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file part'}), 400
+    
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'No selected file'}), 400
+    
+    # Ensure model is loaded
+    if material_model is None:
+        initialize_material_model()
+    
+    try:
+        # Read image
+        image_bytes = file.read()
+        image = cv2.imdecode(np.frombuffer(image_bytes, np.uint8), cv2.IMREAD_COLOR)
+        image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        
+        # Apply transformations
+        img_tensor = material_transform(image_rgb).unsqueeze(0)
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        img_tensor = img_tensor.to(device)
+        
+        # Predict
+        with torch.no_grad():
+            outputs = material_model(img_tensor)
+            _, preds = torch.max(outputs, 1)
+            probs = torch.nn.functional.softmax(outputs, dim=1)
+        
+        # Get results
+        pred_class = material_class_names[preds[0]]
+        confidence = probs[0][preds[0]].item()
+        
+        return jsonify({
+            'material': pred_class,
+            'confidence': confidence,
+            'class_id': int(preds[0]),
+            'probabilities': {
+                cls: float(probs[0][i].item())
+                for i, cls in enumerate(material_class_names)
+            }
+        })
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 
