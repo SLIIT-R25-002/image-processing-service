@@ -16,15 +16,31 @@ import matplotlib.pyplot as plt
 from torchvision import transforms
 from efficientnet_pytorch import EfficientNet
 from PIL import Image as PILImage
+from scipy.spatial import Delaunay
+import torch.nn.functional as F
+from flask import make_response
+
+import math
 
 
 
 
 app = Flask(__name__)
-CORS(app, resources={r"/api/*": {"origins": ["http://localhost:3000"]}}, supports_credentials=True)
+CORS(
+    app,
+    resources={r"/api/*": {
+        "origins": "http://localhost:3000",
+        "expose_headers": ["X-Surface-Area"],  # Explicitly expose your custom header
+        "supports_credentials": True
+    }}
+)
+
 
 material_model = None
 material_class_names = ['asphalt', 'concrete', 'glass'] 
+
+midas = None
+midas_transform = None
 
 # Configuration
 app.config['UPLOAD_FOLDER'] = 'uploads'
@@ -56,6 +72,72 @@ class_names = {
     3: 'vegetation',
     4: 'wall'
 }
+
+def estimate_surface_area(depth, mask, reference_length_px=None, reference_length_real=None, fx=1.0, fy=1.0, cx=None, cy=None):
+    """
+    Estimate 3D surface area from a depth map and mask with optional real-world scaling.
+    
+    Args:
+        depth: Depth map from MiDaS
+        mask: Binary mask of target surface
+        reference_length_px: Length of known object in pixels
+        reference_length_real: Real-world length of known object (same units as desired output)
+        fx, fy: Focal lengths in pixels. If unknown, will be estimated.
+        cx, cy: Principal point (image center if None)
+    """
+    ys, xs = np.where(mask > 127)
+    zs = depth[ys, xs]
+
+    if len(zs) < 3:
+        return 0.0
+
+    h, w = depth.shape
+    if cx is None: cx = w / 2
+    if cy is None: cy = h / 2
+    
+    # Estimate focal length if not provided
+    if fx == 1.0 or fy == 1.0:
+        fx = fy = max(w, h)  # Reasonable default for standard cameras
+    
+    # Apply real-world scaling if reference is provided
+    if reference_length_px and reference_length_real:
+        scale_factor = reference_length_real / reference_length_px
+        zs = zs * scale_factor
+        fx = fx * scale_factor
+        fy = fy * scale_factor
+
+    X = (xs - cx) * zs / fx
+    Y = (ys - cy) * zs / fy
+    Z = zs
+    points = np.stack([X, Y, Z], axis=1)
+
+    tri = Delaunay(np.stack([xs, ys], axis=1))
+    triangles = points[tri.simplices]
+
+    def triangle_area(a, b, c):
+        return 0.5 * np.linalg.norm(np.cross(b - a, c - a))
+
+    areas = [triangle_area(t[0], t[1], t[2]) for t in triangles]
+    return float(np.sum(areas))
+
+
+def initialize_midas():
+    """Initialize MiDaS depth estimation model"""
+    global midas, midas_transform
+    
+    print("Loading MiDaS model...")
+    midas = torch.hub.load("intel-isl/MiDaS", "DPT_Hybrid", trust_repo=True)
+    midas.eval()
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    midas.to(device)
+    
+    # Load transforms
+    midas_transforms = torch.hub.load("intel-isl/MiDaS", "transforms", trust_repo=True)
+    midas_transform = midas_transforms.dpt_transform
+    print("MiDaS model loaded successfully")
+
+
+
 def initialize_material_model():
     """Initialize the material classification model"""
     global material_model
@@ -84,7 +166,7 @@ material_transform = transforms.Compose([
 
 def initialize_models():
     """Initialize all models"""
-    global model, sam, predictor, material_model
+    global model, sam, predictor, material_model, midas
     
     # Load YOLO model
     print("Loading YOLO model...")
@@ -100,6 +182,9 @@ def initialize_models():
     
     # Load material classification model
     initialize_material_model()
+    
+    # Load MiDaS model
+    initialize_midas()
     
     print("All models loaded successfully")
 
@@ -320,6 +405,77 @@ def classify_material():
     
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/depth/masked', methods=['POST'])
+def get_masked_depth():
+    """Endpoint that returns masked depth map and surface area"""
+    if 'image' not in request.files or 'mask' not in request.files:
+        return jsonify({'error': 'Both image and mask files are required'}), 400
+
+    # Get optional reference parameters
+    ref_px = request.form.get('reference_px', type=float)
+    ref_real = request.form.get('reference_real', type=float)
+    fx = request.form.get('fx', 1.0, type=float)
+    fy = request.form.get('fy', 1.0, type=float)
+
+    try:
+        # Read and process files
+        img = cv2.imdecode(np.frombuffer(request.files['image'].read(), np.uint8), cv2.IMREAD_COLOR)
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        mask = cv2.imdecode(np.frombuffer(request.files['mask'].read(), np.uint8), cv2.IMREAD_GRAYSCALE)
+        mask = cv2.resize(mask, (img.shape[1], img.shape[0]))
+
+        # Initialize model if needed
+        if midas is None:
+            initialize_midas()
+
+        # Estimate depth
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        input_tensor = midas_transform(img).to(device)
+        with torch.no_grad():
+            prediction = midas(input_tensor)
+            prediction = F.interpolate(
+                prediction.unsqueeze(1),
+                size=img.shape[:2],
+                mode="bicubic",
+                align_corners=False
+            ).squeeze()
+
+        depth = prediction.cpu().numpy()
+        masked_depth = np.where(mask > 127, depth, 0)
+
+        # Estimate surface area with optional scaling
+        surface_area = estimate_surface_area(
+            depth, mask,
+            reference_length_px=ref_px,
+            reference_length_real=ref_real,
+            fx=fx, fy=fy
+        )
+
+        # Prepare response
+        depth_normalized = cv2.normalize(masked_depth, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U)
+        _, buffer = cv2.imencode('.png', depth_normalized)
+
+            # Create response
+        response = make_response(send_file(
+            io.BytesIO(buffer),
+            mimetype='image/png',
+            as_attachment=True,
+            download_name='depth_map.png'
+        ))
+        
+        # Set headers
+        response.headers['X-Surface-Area'] = str(surface_area)
+        response.headers['Access-Control-Expose-Headers'] = 'X-Surface-Area'
+        
+        # Debug output
+        print(f"[DEBUG] Headers being sent: {response.headers}")
+        return response
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 
 
 

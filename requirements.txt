@@ -10,3 +10,5 @@ matplotlib==3.7.1
 Pillow==9.5.0
 efficientnet-pytorch==0.7.1
 flask-cors==3.0.10
+scipy>=1.7.0
+timm>=0.6.0
