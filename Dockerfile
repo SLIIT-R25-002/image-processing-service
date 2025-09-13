@@ -1,5 +1,5 @@
-# Use Python 3.11 slim image as base
-FROM python:3.11-slim
+# Use PyTorch CUDA image as base for GPU support
+FROM pytorch/pytorch:2.0.1-cuda11.7-cudnn8-runtime AS base
 
 # Set working directory
 WORKDIR /app
@@ -16,6 +16,7 @@ RUN apt-get update && apt-get install -y \
     libc6 \
     wget \
     curl \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first to leverage Docker cache

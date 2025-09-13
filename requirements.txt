@@ -1,16 +1,19 @@
+# PyTorch is already installed in the base image with CUDA support
+# Only install additional packages
 flask
 ultralytics
 opencv-python
 matplotlib
 scikit-image
-torch
-torchvision
 pillow
 celery
 timm
 open3d 
 transformers 
-torch 
 accelerate
 git+https://github.com/openai/CLIP.git
 git+https://github.com/ChaoningZhang/MobileSAM.git
+
+#uncomment the below lines if you want to use torch and torchvision
+# torch
+# torchvision
