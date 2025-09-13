@@ -3,6 +3,7 @@
 #  - POST /analyze -> accepts an image, starts Celery task, returns task_id
 #  - GET  /status/<task_id> -> returns status/result of analysis
 #  - POST /calculate_area -> calculates surface area using a base64 mask + real distance
+# main
 
 import os
 from flask import Flask, request, jsonify
