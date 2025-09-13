@@ -1,6 +1,9 @@
 # PyTorch is already installed in the base image with CUDA support
 # Only install additional packages
 flask
+flask_cors
+segment_anything
+efficientnet_pytorch
 ultralytics
 opencv-python
 matplotlib
