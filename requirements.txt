@@ -1,22 +1,36 @@
-# PyTorch is already installed in the base image with CUDA support
-# Only install additional packages
-flask
-flask_cors
-segment_anything
-efficientnet_pytorch
-ultralytics
-opencv-python
-matplotlib
-scikit-image
-pillow
-celery
-timm
-open3d 
-transformers 
-accelerate
-git+https://github.com/openai/CLIP.git
-git+https://github.com/ChaoningZhang/MobileSAM.git
+# Web Framework
+flask>=3.1.0
+flask-cors>=6.0.0
+pyngrok>=7.3.0
 
-#uncomment the below lines if you want to use torch and torchvision
-# torch
-# torchvision
+# Computer Vision and Image Processing
+ultralytics>=8.0.0
+opencv-python>=4.8.0
+Pillow>=10.0.0
+scikit-image>=0.21.0
+
+# Machine Learning / AI
+transformers==4.56.1
+accelerate==1.10.1
+timm>=0.9.0,<0.10.0
+
+# 3D Processing
+open3d>=0.17.0
+
+# Data Processing
+numpy>=1.24.0,<2.0.0
+matplotlib>=3.7.0
+typing-extensions>=4.8.0,<5.0.0
+
+# Web Server Utils
+werkzeug>=3.1.0
+
+# Optional: For better performance
+# CUDA-enabled PyTorch (install separately based on your CUDA version)
+# Visit: https://pytorch.org/get-started/locally/
+
+# Installation Instructions:
+# 1. Install main requirements: pip install -r requirements.txt
+# 2. Install CLIP: pip install git+https://github.com/openai/CLIP.git
+# 3. Install MobileSAM: pip install git+https://github.com/ChaoningZhang/MobileSAM.git
+# 4. For CUDA support, reinstall PyTorch with CUDA from: https://pytorch.org/get-started/locally/
