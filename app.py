@@ -5,7 +5,7 @@ from werkzeug.utils import secure_filename
 from flask_cors import CORS
 import torch
 
-from ai_logic import run_analysis_pipeline, run_area_calculation, _yolo, _sam, _clip_model, _depth_model
+from ai_logic import run_analysis_pipeline, run_area_calculation, _yolo, _sam, _clip_model, _depth_model, preload_all_models
 
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -54,6 +54,15 @@ app.config["UPLOAD_FOLDER"] = UPLOAD_DIR
 
 # Initialize device on startup
 device = initialize_device()
+
+# Preload all AI models during startup to avoid delays during analysis
+try:
+    print("🤖 Starting AI model initialization...")
+    preload_all_models()
+    print("🎉 All AI models ready for inference!")
+except Exception as e:
+    logger.error(f"❌ Failed to preload AI models: {e}")
+    logger.error("⚠️ Models will be loaded on first use (lazy loading)")
 
 # ---------- Endpoint 1: Run analysis synchronously ----------
 @app.route("/analyze", methods=["POST"])

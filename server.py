@@ -9,11 +9,12 @@ def run_app():
 
 def start_server():
     """Start the Flask server with ngrok tunnel"""
-    print("Starting Flask app in background...")
+    print("🚀 Starting Flask app in background...")
     flask_thread = threading.Thread(target=run_app)
     flask_thread.daemon = True
     flask_thread.start()
-    time.sleep(3)  # Give the app a moment to start
+    print("⏳ Waiting for server and AI models to initialize...")
+    time.sleep(5)  # Give the app more time to start and load models
 
     # Create the public URL
     try:
@@ -21,6 +22,7 @@ def start_server():
         print("====================================================================")
         print(f"✅ Your Flask API is now live!")
         print(f"🌍 Public URL: {public_url}")
+        print(f"🤖 AI models are preloaded and ready for fast inference!")
         print("====================================================================")
         print("You can now use this URL in a tool like Postman to test your API.")
         print("Press Ctrl+C to stop the server...")

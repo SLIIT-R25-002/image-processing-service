@@ -188,6 +188,38 @@ def _ensure_depth():
         
     return _depth_processor, _depth_model
 
+def preload_all_models():
+    """
+    Preload all AI models during server startup to avoid lazy loading delays during analysis.
+    This will download and initialize YOLO, SAM, CLIP, and DepthPro models.
+    """
+    print("🚀 Preloading all AI models...")
+    
+    try:
+        print("📦 Loading YOLO model...")
+        _ensure_yolo()
+        print("✅ YOLO model loaded successfully")
+        
+        print("📦 Loading SAM model...")
+        _ensure_sam()
+        print("✅ SAM model loaded successfully")
+        
+        print("📦 Loading CLIP model...")
+        _ensure_clip()
+        print("✅ CLIP model loaded successfully")
+        
+        print("📦 Loading DepthPro model...")
+        _ensure_depth()
+        print("✅ DepthPro model loaded successfully")
+        
+        print("🎉 All AI models preloaded successfully!")
+        
+    except Exception as e:
+        print(f"❌ Error during model preloading: {e}")
+        import traceback
+        print(f"📋 Full traceback: {traceback.format_exc()}")
+        raise
+
 def _read_image_rgb(path: str) -> np.ndarray:
     return cv2.cvtColor(cv2.imread(path), cv2.COLOR_BGR2RGB)
 
