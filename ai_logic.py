@@ -13,7 +13,8 @@ from mobile_sam import sam_model_registry, SamPredictor
 import clip
 from skimage import morphology
 
-from transformers import AutoImageProcessor, AutoModelForDepthEstimation
+from transformers import DepthProImageProcessorFast, DepthProForDepthEstimation
+# from transformers import AutoImageProcessor, AutoModelForDepthEstimation
 import open3d as o3d
 
 # =========================
@@ -129,9 +130,62 @@ def _ensure_clip():
 def _ensure_depth():
     global _depth_processor, _depth_model
     if _depth_model is None:
-        _depth_processor = AutoImageProcessor.from_pretrained("apple/DepthPro-hf")
-        _depth_model = AutoModelForDepthEstimation.from_pretrained("apple/DepthPro-hf").to(DEVICE)
-        _depth_model.eval()
+        print("🔧 Initializing depth estimation model (DepthPro)...")
+        print(f"🎯 Target device: {DEVICE}")
+        
+        try:
+            print("📥 Loading depth processor...")
+            _depth_processor = DepthProImageProcessorFast.from_pretrained("apple/DepthPro-hf")
+            # _depth_processor = AutoImageProcessor.from_pretrained("apple/DepthPro-hf")
+            print(f"✅ Depth processor loaded successfully")
+            print(f"📊 Processor config: {_depth_processor.__class__.__name__}")
+            
+        except Exception as e:
+            print(f"❌ Error loading depth processor: {e}")
+            import traceback
+            print(f"📋 Traceback: {traceback.format_exc()}")
+            raise
+        
+        try:
+            print("🧠 Loading depth model...")
+            _depth_model = DepthProForDepthEstimation.from_pretrained("apple/DepthPro-hf").to(DEVICE)
+            # _depth_model = AutoModelForDepthEstimation.from_pretrained("apple/DepthPro-hf")
+            print(f"✅ Depth model loaded successfully")
+            print(f"📊 Model type: {_depth_model.__class__.__name__}")
+            
+            # Log model parameters before moving to device
+            total_params = sum(p.numel() for p in _depth_model.parameters())
+            trainable_params = sum(p.numel() for p in _depth_model.parameters() if p.requires_grad)
+            print(f"📊 Model parameters - Total: {total_params:,}, Trainable: {trainable_params:,}")
+            
+            print(f"🚀 Moving model to device: {DEVICE}")
+            _depth_model = _depth_model.to(DEVICE)
+            print(f"✅ Model moved to device successfully")
+            
+            print("🔒 Setting model to evaluation mode...")
+            _depth_model.eval()
+            print(f"✅ Model set to evaluation mode")
+            
+            # Verify model device placement
+            model_device = next(_depth_model.parameters()).device
+            print(f"📱 Model device verification: {model_device}")
+            
+            if torch.cuda.is_available() and DEVICE == "cuda":
+                print(f"🔥 GPU memory after model loading:")
+                print(f"   Allocated: {torch.cuda.memory_allocated(0) / 1024**3:.2f} GB")
+                print(f"   Cached: {torch.cuda.memory_reserved(0) / 1024**3:.2f} GB")
+                print(f"   Total: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.2f} GB")
+            
+        except Exception as e:
+            print(f"❌ Error loading depth model: {e}")
+            import traceback
+            print(f"📋 Traceback: {traceback.format_exc()}")
+            raise
+        
+        print("✅ Depth estimation pipeline initialized successfully")
+    else:
+        print("♻️ Depth model already initialized, reusing existing instance")
+        
     return _depth_processor, _depth_model
 
 def _read_image_rgb(path: str) -> np.ndarray:
@@ -302,40 +356,160 @@ def _create_point_cloud(depth_map, fx, fy, cx, cy):
 
 def run_area_calculation(image_path: str, mask_base64: str, real_distance: float) -> float:
     print(f"📐 Calculating area for image: {image_path}")
-    rgb = _read_image_rgb(image_path)
-    H, W = rgb.shape[:2]
-    mask_bool = _base64_png_to_mask(mask_base64)
-    if mask_bool.shape != (H, W):
-        mask_bool = cv2.resize(mask_bool.astype(np.uint8), (W, H), interpolation=cv2.INTER_NEAREST).astype(bool)
-    depth_processor, depth_model = _ensure_depth()
-    pil_img = Image.fromarray(rgb)
-    with torch.no_grad():
-        inputs = depth_processor(images=pil_img, return_tensors="pt").to(DEVICE)
-        outputs = depth_model(**inputs)
-        predicted_depth = outputs.predicted_depth
-        prediction = torch.nn.functional.interpolate(
-            predicted_depth.unsqueeze(1), size=(H, W), mode="bicubic", align_corners=False,
-        ).squeeze()
-    depth_raw = prediction.cpu().numpy()
-    depth_masked = np.where(mask_bool, depth_raw, np.nan)
-    positive_vals = depth_masked[depth_masked > 0]
-    if positive_vals.size == 0: return 0.0
-    robust_min = np.nanpercentile(positive_vals, 1)
-    if robust_min <= 0 or not np.isfinite(robust_min): return 0.0
-    scale = float(real_distance) / float(robust_min) if real_distance else 1.0
-    depth_scaled = depth_masked * scale
-    focal = float(W)
-    cx, cy = W / 2.0, H / 2.0
-    pts = _create_point_cloud(depth_scaled, focal, focal, cx, cy)
-    if pts.shape[0] < 3: return 0.0
-    pcd = o3d.geometry.PointCloud()
-    pcd.points = o3d.utility.Vector3dVector(pts)
-    pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30))
+    print(f"📊 Input parameters - real_distance: {real_distance}, mask_base64 length: {len(mask_base64) if mask_base64 else 'None'}")
+    
+    # Load and validate image
     try:
-        mesh, _ = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(pcd, depth=9)
+        rgb = _read_image_rgb(image_path)
+        H, W = rgb.shape[:2]
+        print(f"🖼️ Image loaded successfully - dimensions: {H}x{W}")
+    except Exception as e:
+        print(f"❌ Error loading image: {e}")
+        raise
+    
+    # Process mask
+    try:
+        mask_bool = _base64_png_to_mask(mask_base64)
+        print(f"🎭 Original mask shape: {mask_bool.shape}")
+        
+        if mask_bool.shape != (H, W):
+            print(f"🔄 Resizing mask from {mask_bool.shape} to ({H}, {W})")
+            mask_bool = cv2.resize(mask_bool.astype(np.uint8), (W, H), interpolation=cv2.INTER_NEAREST).astype(bool)
+        
+        mask_pixels = np.sum(mask_bool)
+        total_pixels = H * W
+        mask_coverage = (mask_pixels / total_pixels) * 100
+        print(f"🎯 Mask coverage: {mask_pixels}/{total_pixels} pixels ({mask_coverage:.2f}%)")
+        
+        if mask_pixels == 0:
+            print("⚠️ Warning: Mask is empty (no True pixels)")
+            return 0.0
+            
+    except Exception as e:
+        print(f"❌ Error processing mask: {e}")
+        raise
+    
+    # Initialize depth model
+    try:
+        print("🧠 Loading depth estimation model...")
+        depth_processor, depth_model = _ensure_depth()
+        print(f"📱 Depth model device: {next(depth_model.parameters()).device}")
+    except Exception as e:
+        print(f"❌ Error loading depth model: {e}")
+        raise
+    
+    # Generate depth map
+    try:
+        print("🔍 Running depth estimation...")
+        pil_img = Image.fromarray(rgb)
+        
+        with torch.no_grad():
+            inputs = depth_processor(images=pil_img, return_tensors="pt").to(DEVICE)
+            print(f"📥 Depth input tensor shape: {inputs['pixel_values'].shape}")
+            
+            outputs = depth_model(**inputs)
+            predicted_depth = outputs.predicted_depth
+            print(f"📤 Raw depth output shape: {predicted_depth.shape}")
+            
+            prediction = torch.nn.functional.interpolate(
+                predicted_depth.unsqueeze(1), size=(H, W), mode="bicubic", align_corners=False,
+            ).squeeze()
+            print(f"🔄 Interpolated depth shape: {prediction.shape}")
+            
+    except Exception as e:
+        print(f"❌ Error during depth estimation: {e}")
+        raise
+    
+    # Process depth data
+    try:
+        depth_raw = prediction.cpu().numpy()
+        print(f"📊 Raw depth stats - min: {np.nanmin(depth_raw):.4f}, max: {np.nanmax(depth_raw):.4f}, mean: {np.nanmean(depth_raw):.4f}")
+        
+        depth_masked = np.where(mask_bool, depth_raw, np.nan)
+        valid_depth_pixels = np.sum(~np.isnan(depth_masked))
+        print(f"🎯 Valid depth pixels in mask: {valid_depth_pixels}/{mask_pixels}")
+        
+        positive_vals = depth_masked[depth_masked > 0]
+        print(f"📈 Positive depth values: {positive_vals.size}/{valid_depth_pixels}")
+        
+        if positive_vals.size == 0:
+            print("⚠️ Warning: No positive depth values found in masked region")
+            return 0.0
+            
+        print(f"📊 Positive depth stats - min: {np.min(positive_vals):.4f}, max: {np.max(positive_vals):.4f}, mean: {np.mean(positive_vals):.4f}")
+        
+    except Exception as e:
+        print(f"❌ Error processing depth data: {e}")
+        raise
+    
+    # Calculate scaling
+    try:
+        robust_min = np.nanpercentile(positive_vals, 1)
+        print(f"📐 Robust minimum depth (1st percentile): {robust_min:.4f}")
+        
+        if robust_min <= 0 or not np.isfinite(robust_min):
+            print(f"❌ Invalid robust minimum: {robust_min}")
+            return 0.0
+            
+        scale = float(real_distance) / float(robust_min) if real_distance else 1.0
+        print(f"⚖️ Scaling factor: {scale:.4f} (real_distance: {real_distance}, robust_min: {robust_min})")
+        
+        depth_scaled = depth_masked * scale
+        scaled_positive = depth_scaled[depth_scaled > 0]
+        if scaled_positive.size > 0:
+            print(f"📏 Scaled depth stats - min: {np.min(scaled_positive):.4f}, max: {np.max(scaled_positive):.4f}, mean: {np.mean(scaled_positive):.4f}")
+        
+    except Exception as e:
+        print(f"❌ Error calculating scaling: {e}")
+        raise
+    
+    # Create point cloud
+    try:
+        print("☁️ Creating point cloud...")
+        focal = float(W)
+        cx, cy = W / 2.0, H / 2.0
+        print(f"📷 Camera parameters - focal: {focal}, center: ({cx}, {cy})")
+        
+        pts = _create_point_cloud(depth_scaled, focal, focal, cx, cy)
+        print(f"🔢 Point cloud created with {pts.shape[0]} points")
+        
+        if pts.shape[0] < 3:
+            print(f"⚠️ Warning: Insufficient points for mesh creation: {pts.shape[0]} < 3")
+            return 0.0
+            
+        # Log point cloud statistics
+        if pts.shape[0] > 0:
+            print(f"📊 Point cloud bounds:")
+            print(f"   X: [{np.min(pts[:, 0]):.4f}, {np.max(pts[:, 0]):.4f}]")
+            print(f"   Y: [{np.min(pts[:, 1]):.4f}, {np.max(pts[:, 1]):.4f}]")
+            print(f"   Z: [{np.min(pts[:, 2]):.4f}, {np.max(pts[:, 2]):.4f}]")
+            
+    except Exception as e:
+        print(f"❌ Error creating point cloud: {e}")
+        raise
+    
+    # Create mesh and calculate area
+    try:
+        print("🕸️ Creating mesh from point cloud...")
+        pcd = o3d.geometry.PointCloud()
+        pcd.points = o3d.utility.Vector3dVector(pts)
+        
+        print("📐 Estimating normals...")
+        pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30))
+        print(f"📊 Point cloud has {len(pcd.normals)} normals")
+        
+        print("🔨 Running Poisson surface reconstruction...")
+        mesh, densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(pcd, depth=9)
+        
+        print(f"🕸️ Mesh created with {len(mesh.vertices)} vertices and {len(mesh.triangles)} triangles")
+        print(f"📏 Density values - min: {np.min(densities):.4f}, max: {np.max(densities):.4f}")
+        
         area = float(mesh.get_surface_area())
         print(f"✅ Estimated Surface Area: {area:.2f} m²")
         return area
+        
     except Exception as e:
         print(f"❌ Mesh reconstruction error: {e}")
+        import traceback
+        print(f"📋 Full traceback: {traceback.format_exc()}")
         return 0.0

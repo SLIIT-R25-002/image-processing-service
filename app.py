@@ -74,30 +74,72 @@ def analyze_image_endpoint():
 # ---------- Endpoint 2: Calculate area ----------
 @app.route("/calculate_area", methods=["POST"])
 def calculate_area_endpoint():
+    logger.info("=== Starting calculate_area_endpoint ===")
+    
+    # Log request details
+    logger.info(f"Request method: {request.method}")
+    logger.info(f"Request headers: {dict(request.headers)}")
+    logger.info(f"Request content type: {request.content_type}")
+    
     data = request.get_json(silent=True)
+    logger.info(f"Received JSON data: {data}")
+    
     if not data:
+        logger.error("No JSON body received in request")
         return jsonify({"error": "Missing JSON body"}), 400
 
     required = {"image_filename", "mask_base64", "real_distance"}
+    logger.info(f"Required fields: {required}")
+    logger.info(f"Received fields: {set(data.keys()) if data else 'None'}")
+    
     if not required.issubset(data):
+        missing_keys = required - set(data.keys())
+        logger.error(f"Missing required keys: {missing_keys}")
         return jsonify({"error": f"Missing keys. Required: {sorted(list(required))}"}), 400
 
+    # Log received parameters
+    logger.info(f"Image filename: {data['image_filename']}")
+    logger.info(f"Real distance: {data['real_distance']}")
+    logger.info(f"Mask base64 length: {len(data['mask_base64']) if data['mask_base64'] else 'None'}")
+
     image_path = os.path.join(app.config["UPLOAD_FOLDER"], secure_filename(data["image_filename"]))
+    logger.info(f"Constructed image path: {image_path}")
+    logger.info(f"Upload folder: {app.config['UPLOAD_FOLDER']}")
+    
     if not os.path.exists(image_path):
+        logger.error(f"Image file not found at path: {image_path}")
+        logger.info(f"Available files in upload folder: {os.listdir(app.config['UPLOAD_FOLDER']) if os.path.exists(app.config['UPLOAD_FOLDER']) else 'Upload folder does not exist'}")
         return jsonify({"error": "Image not found on server"}), 404
+
+    logger.info(f"Image file exists, size: {os.path.getsize(image_path)} bytes")
 
     try:
         real_distance = float(data["real_distance"])
-    except Exception:
+        logger.info(f"Successfully parsed real_distance: {real_distance}")
+    except Exception as e:
+        logger.error(f"Failed to parse real_distance '{data['real_distance']}': {e}")
         return jsonify({"error": "real_distance must be a number"}), 400
 
-    area = run_area_calculation(
-        image_path=image_path,
-        mask_base64=data["mask_base64"],
-        real_distance=real_distance,
-    )
+    logger.info("Starting area calculation...")
+    try:
+        area = run_area_calculation(
+            image_path=image_path,
+            mask_base64=data["mask_base64"],
+            real_distance=real_distance,
+        )
+        logger.info(f"Area calculation completed successfully: {area} square meters")
+    except Exception as e:
+        logger.error(f"Error during area calculation: {e}")
+        logger.error(f"Exception type: {type(e).__name__}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return jsonify({"error": f"Area calculation failed: {str(e)}"}), 500
 
-    return jsonify({"surface_area": area, "unit": "square_meters"}), 200
+    result = {"surface_area": area, "unit": "square_meters"}
+    logger.info(f"Returning result: {result}")
+    logger.info("=== calculate_area_endpoint completed successfully ===")
+    
+    return jsonify(result), 200
 
 @app.route("/health", methods=["GET"])
 def health_check():
