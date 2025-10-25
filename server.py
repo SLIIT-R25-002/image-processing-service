@@ -9,11 +9,12 @@ def run_app():
 
 def start_server():
     """Start the Flask server with ngrok tunnel"""
-    print("Starting Flask app in background...")
+    print("🚀 Starting Flask app and preloading models...")
     flask_thread = threading.Thread(target=run_app)
     flask_thread.daemon = True
     flask_thread.start()
-    time.sleep(3)  # Give the app a moment to start
+    print("⏱️ Waiting for server and models to initialize...")
+    time.sleep(10)  # Give more time for model loading
 
     # Create the public URL
     try:

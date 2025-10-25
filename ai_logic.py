@@ -2,6 +2,7 @@ import os
 import io
 import base64
 import json
+import time
 import cv2
 import numpy as np
 from PIL import Image
@@ -13,8 +14,7 @@ from mobile_sam import sam_model_registry, SamPredictor
 import clip
 from skimage import morphology
 
-from transformers import DepthProImageProcessorFast, DepthProForDepthEstimation
-# from transformers import AutoImageProcessor, AutoModelForDepthEstimation
+from transformers import AutoImageProcessor, AutoModelForDepthEstimation
 import open3d as o3d
 
 # =========================
@@ -98,95 +98,159 @@ CLASS_MATERIAL_PROMPTS = {
     }
 }
 
-# Lazy singletons
+# Model singletons - will be preloaded at startup
 _yolo, _sam, _sam_pred = None, None, None
 _clip_model, _clip_preprocess = None, None
 _depth_processor, _depth_model = None, None
 
-print("🚀 Initializing AI backends... (models will lazy-load on first use)")
+print("🚀 AI backend models will be preloaded at startup...")
+
+# =========================
+# Model Loading Functions
+# =========================
+def _load_yolo():
+    """Load YOLO model"""
+    print("📥 Loading YOLO model...")
+    global _yolo
+    _yolo = YOLO(YOLO_MODEL_PATH)
+    print("✅ YOLO model loaded successfully")
+    return _yolo
+
+def _load_sam():
+    """Load SAM model"""
+    print("📥 Loading SAM model...")
+    global _sam, _sam_pred
+    _sam = sam_model_registry["vit_t"](checkpoint=SAM_MODEL_PATH).to(DEVICE)
+    _sam_pred = SamPredictor(_sam)
+    print("✅ SAM model loaded successfully")
+    return _sam_pred
+
+def _load_clip():
+    """Load CLIP model"""
+    print("📥 Loading CLIP model...")
+    global _clip_model, _clip_preprocess
+    _clip_model, _clip_preprocess = clip.load("ViT-B/32", device=CLIP_DEVICE)
+    print("✅ CLIP model loaded successfully")
+    return _clip_model, _clip_preprocess
+
+def _load_depth():
+    """Load Depth-Anything-V2 model"""
+    print("🔧 Loading depth estimation model (Depth-Anything-V2)...")
+    print(f"🎯 Target device: {DEVICE}")
+    
+    global _depth_processor, _depth_model
+    
+    try:
+        print("📥 Loading depth processor...")
+        _depth_processor = AutoImageProcessor.from_pretrained("depth-anything/Depth-Anything-V2-Small-hf")
+        print(f"✅ Depth processor loaded successfully")
+        print(f"📊 Processor config: {_depth_processor.__class__.__name__}")
+        
+    except Exception as e:
+        print(f"❌ Error loading depth processor: {e}")
+        import traceback
+        print(f"📋 Traceback: {traceback.format_exc()}")
+        raise
+    
+    try:
+        print("🧠 Loading depth model...")
+        _depth_model = AutoModelForDepthEstimation.from_pretrained("depth-anything/Depth-Anything-V2-Small-hf").to(DEVICE)
+        print(f"✅ Depth model loaded successfully")
+        print(f"📊 Model type: {_depth_model.__class__.__name__}")
+        
+        # Log model parameters before moving to device
+        total_params = sum(p.numel() for p in _depth_model.parameters())
+        trainable_params = sum(p.numel() for p in _depth_model.parameters() if p.requires_grad)
+        print(f"📊 Model parameters - Total: {total_params:,}, Trainable: {trainable_params:,}")
+        
+        print(f"🚀 Moving model to device: {DEVICE}")
+        _depth_model = _depth_model.to(DEVICE)
+        print(f"✅ Model moved to device successfully")
+        
+        print("🔒 Setting model to evaluation mode...")
+        _depth_model.eval()
+        print(f"✅ Model set to evaluation mode")
+        
+        # Verify model device placement
+        model_device = next(_depth_model.parameters()).device
+        print(f"📱 Model device verification: {model_device}")
+        
+        if torch.cuda.is_available() and DEVICE == "cuda":
+            print(f"🔥 GPU memory after model loading:")
+            print(f"   Allocated: {torch.cuda.memory_allocated(0) / 1024**3:.2f} GB")
+            print(f"   Cached: {torch.cuda.memory_reserved(0) / 1024**3:.2f} GB")
+            print(f"   Total: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.2f} GB")
+        
+    except Exception as e:
+        print(f"❌ Error loading depth model: {e}")
+        import traceback
+        print(f"📋 Traceback: {traceback.format_exc()}")
+        raise
+    
+    print("✅ Depth estimation pipeline loaded successfully")
+    return _depth_processor, _depth_model
+
+def preload_all_models():
+    """
+    Preload all AI models at startup to reduce API response time.
+    This function should be called once when the server starts.
+    """
+    print("🚀 Starting to preload all AI models...")
+    start_time = time.time()
+    
+    try:
+        # Load all models in sequence
+        _load_yolo()
+        _load_sam()
+        _load_clip()
+        _load_depth()
+        
+        end_time = time.time()
+        loading_time = end_time - start_time
+        print(f"✅ All models preloaded successfully in {loading_time:.2f} seconds")
+        print("🎯 API responses should now be faster!")
+        
+        # Print memory usage if CUDA is available
+        if torch.cuda.is_available():
+            print(f"🔥 Final GPU memory usage:")
+            print(f"   Allocated: {torch.cuda.memory_allocated(0) / 1024**3:.2f} GB")
+            print(f"   Cached: {torch.cuda.memory_reserved(0) / 1024**3:.2f} GB")
+            print(f"   Total: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.2f} GB")
+        
+    except Exception as e:
+        print(f"❌ Error during model preloading: {e}")
+        import traceback
+        print(f"📋 Traceback: {traceback.format_exc()}")
+        raise
+
+# Model getter functions (replace the old _ensure_* functions)
+def _get_yolo():
+    """Get the preloaded YOLO model"""
+    if _yolo is None:
+        raise RuntimeError("YOLO model not preloaded. Call preload_all_models() first.")
+    return _yolo
+
+def _get_sam():
+    """Get the preloaded SAM model"""
+    if _sam_pred is None:
+        raise RuntimeError("SAM model not preloaded. Call preload_all_models() first.")
+    return _sam_pred
+
+def _get_clip():
+    """Get the preloaded CLIP model"""
+    if _clip_model is None:
+        raise RuntimeError("CLIP model not preloaded. Call preload_all_models() first.")
+    return _clip_model, _clip_preprocess
+
+def _get_depth():
+    """Get the preloaded depth model"""
+    if _depth_model is None:
+        raise RuntimeError("Depth model not preloaded. Call preload_all_models() first.")
+    return _depth_processor, _depth_model
 
 # =========================
 # Utilities
 # =========================
-def _ensure_yolo():
-    global _yolo
-    if _yolo is None:
-        _yolo = YOLO(YOLO_MODEL_PATH)
-    return _yolo
-
-def _ensure_sam():
-    global _sam, _sam_pred
-    if _sam_pred is None:
-        _sam = sam_model_registry["vit_t"](checkpoint=SAM_MODEL_PATH).to(DEVICE)
-        _sam_pred = SamPredictor(_sam)
-    return _sam_pred
-
-def _ensure_clip():
-    global _clip_model, _clip_preprocess
-    if _clip_model is None:
-        _clip_model, _clip_preprocess = clip.load("ViT-B/32", device=CLIP_DEVICE)
-    return _clip_model, _clip_preprocess
-
-def _ensure_depth():
-    global _depth_processor, _depth_model
-    if _depth_model is None:
-        print("🔧 Initializing depth estimation model (DepthPro)...")
-        print(f"🎯 Target device: {DEVICE}")
-        
-        try:
-            print("📥 Loading depth processor...")
-            _depth_processor = DepthProImageProcessorFast.from_pretrained("apple/DepthPro-hf")
-            # _depth_processor = AutoImageProcessor.from_pretrained("apple/DepthPro-hf")
-            print(f"✅ Depth processor loaded successfully")
-            print(f"📊 Processor config: {_depth_processor.__class__.__name__}")
-            
-        except Exception as e:
-            print(f"❌ Error loading depth processor: {e}")
-            import traceback
-            print(f"📋 Traceback: {traceback.format_exc()}")
-            raise
-        
-        try:
-            print("🧠 Loading depth model...")
-            _depth_model = DepthProForDepthEstimation.from_pretrained("apple/DepthPro-hf").to(DEVICE)
-            # _depth_model = AutoModelForDepthEstimation.from_pretrained("apple/DepthPro-hf")
-            print(f"✅ Depth model loaded successfully")
-            print(f"📊 Model type: {_depth_model.__class__.__name__}")
-            
-            # Log model parameters before moving to device
-            total_params = sum(p.numel() for p in _depth_model.parameters())
-            trainable_params = sum(p.numel() for p in _depth_model.parameters() if p.requires_grad)
-            print(f"📊 Model parameters - Total: {total_params:,}, Trainable: {trainable_params:,}")
-            
-            print(f"🚀 Moving model to device: {DEVICE}")
-            _depth_model = _depth_model.to(DEVICE)
-            print(f"✅ Model moved to device successfully")
-            
-            print("🔒 Setting model to evaluation mode...")
-            _depth_model.eval()
-            print(f"✅ Model set to evaluation mode")
-            
-            # Verify model device placement
-            model_device = next(_depth_model.parameters()).device
-            print(f"📱 Model device verification: {model_device}")
-            
-            if torch.cuda.is_available() and DEVICE == "cuda":
-                print(f"🔥 GPU memory after model loading:")
-                print(f"   Allocated: {torch.cuda.memory_allocated(0) / 1024**3:.2f} GB")
-                print(f"   Cached: {torch.cuda.memory_reserved(0) / 1024**3:.2f} GB")
-                print(f"   Total: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.2f} GB")
-            
-        except Exception as e:
-            print(f"❌ Error loading depth model: {e}")
-            import traceback
-            print(f"📋 Traceback: {traceback.format_exc()}")
-            raise
-        
-        print("✅ Depth estimation pipeline initialized successfully")
-    else:
-        print("♻️ Depth model already initialized, reusing existing instance")
-        
-    return _depth_processor, _depth_model
 
 def _read_image_rgb(path: str) -> np.ndarray:
     return cv2.cvtColor(cv2.imread(path), cv2.COLOR_BGR2RGB)
@@ -206,7 +270,7 @@ def _base64_png_to_mask(b64: str) -> np.ndarray:
 # ❗ Material Classification Function
 # =========================
 def _classify_material(pil_img: Image.Image, cls_id: int):
-    clip_model, clip_preprocess = _ensure_clip()
+    clip_model, clip_preprocess = _get_clip()
 
     if cls_id not in CLASS_MATERIAL_PROMPTS:
         return "unknown", 0.0
@@ -246,7 +310,7 @@ def _classify_material(pil_img: Image.Image, cls_id: int):
 # =========================
 def run_analysis_pipeline(image_path: str):
     print(f"🧠 Analyzing image with hybrid method: {image_path}")
-    yolo, sam_pred = _ensure_yolo(), _ensure_sam()
+    yolo, sam_pred = _get_yolo(), _get_sam()
     image_rgb = _read_image_rgb(image_path)
     H, W = image_rgb.shape[:2]
 
@@ -389,13 +453,13 @@ def run_area_calculation(image_path: str, mask_base64: str, real_distance: float
         print(f"❌ Error processing mask: {e}")
         raise
     
-    # Initialize depth model
+    # Get preloaded depth model
     try:
-        print("🧠 Loading depth estimation model...")
-        depth_processor, depth_model = _ensure_depth()
+        print("🧠 Getting preloaded depth estimation model...")
+        depth_processor, depth_model = _get_depth()
         print(f"📱 Depth model device: {next(depth_model.parameters()).device}")
     except Exception as e:
-        print(f"❌ Error loading depth model: {e}")
+        print(f"❌ Error getting depth model: {e}")
         raise
     
     # Generate depth map

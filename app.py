@@ -5,7 +5,7 @@ from werkzeug.utils import secure_filename
 from flask_cors import CORS
 import torch
 
-from ai_logic import run_analysis_pipeline, run_area_calculation, _yolo, _sam, _clip_model, _depth_model
+from ai_logic import run_analysis_pipeline, run_area_calculation, _yolo, _sam, _clip_model, _depth_model, preload_all_models
 
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -48,12 +48,27 @@ def initialize_device():
     
     return device
 
+def initialize_models():
+    """Initialize all AI models at startup"""
+    try:
+        logger.info("🚀 Starting model preloading process...")
+        preload_all_models()
+        logger.info("✅ All models preloaded successfully")
+    except Exception as e:
+        logger.error(f"❌ Error during model preloading: {e}")
+        import traceback
+        logger.error(f"📋 Traceback: {traceback.format_exc()}")
+        raise
+
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 app.config["UPLOAD_FOLDER"] = UPLOAD_DIR
 
 # Initialize device on startup
 device = initialize_device()
+
+# Initialize all models on startup
+initialize_models()
 
 # ---------- Endpoint 1: Run analysis synchronously ----------
 @app.route("/analyze", methods=["POST"])
