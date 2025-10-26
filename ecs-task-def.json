@@ -1,0 +1,100 @@
+{
+    "compatibilities": [
+        "EC2",
+        "MANAGED_INSTANCES"
+    ],
+    "containerDefinitions": [
+        {
+            "cpu": 1024,
+            "environment": [],
+            "environmentFiles": [],
+            "essential": true,
+            "image": "597088026916.dkr.ecr.eu-north-1.amazonaws.com/image-processing-service:latest",
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": "/ecs/HeatScapeTask-Img",
+                    "awslogs-create-group": "true",
+                    "awslogs-region": "eu-north-1",
+                    "awslogs-stream-prefix": "ecs"
+                },
+                "secretOptions": []
+            },
+            "memory": 3072,
+            "memoryReservation": 1024,
+            "mountPoints": [],
+            "name": "image-processing-service",
+            "portMappings": [
+                {
+                    "appProtocol": "http",
+                    "containerPort": 5000,
+                    "hostPort": 5000,
+                    "name": "5000-tcp",
+                    "protocol": "tcp"
+                }
+            ],
+            "resourceRequirements": [
+                {
+                    "type": "GPU",
+                    "value": "1"
+                }
+            ],
+            "systemControls": [],
+            "ulimits": [],
+            "volumesFrom": []
+        }
+    ],
+    "cpu": "1024",
+    "executionRoleArn": "arn:aws:iam::597088026916:role/ecsTaskExecutionRole",
+    "family": "HeatScapeTask-Img",
+    "memory": "3072",
+    "networkMode": "awsvpc",
+    "placementConstraints": [],
+    "registeredAt": "2025-10-24T20:12:12.019Z",
+    "registeredBy": "arn:aws:iam::597088026916:root",
+    "requiresAttributes": [
+        {
+            "name": "com.amazonaws.ecs.capability.logging-driver.awslogs"
+        },
+        {
+            "name": "ecs.capability.execution-role-awslogs"
+        },
+        {
+            "name": "com.amazonaws.ecs.capability.ecr-auth"
+        },
+        {
+            "name": "com.amazonaws.ecs.capability.docker-remote-api.1.19"
+        },
+        {
+            "name": "com.amazonaws.ecs.capability.docker-remote-api.1.21"
+        },
+        {
+            "name": "com.amazonaws.ecs.capability.task-iam-role"
+        },
+        {
+            "name": "ecs.capability.execution-role-ecr-pull"
+        },
+        {
+            "name": "com.amazonaws.ecs.capability.docker-remote-api.1.18"
+        },
+        {
+            "name": "ecs.capability.task-eni"
+        },
+        {
+            "name": "com.amazonaws.ecs.capability.docker-remote-api.1.29"
+        }
+    ],
+    "requiresCompatibilities": [
+        "MANAGED_INSTANCES"
+    ],
+    "revision": 1,
+    "runtimePlatform": {
+        "cpuArchitecture": "X86_64",
+        "operatingSystemFamily": "LINUX"
+    },
+    "status": "ACTIVE",
+    "taskDefinitionArn": "arn:aws:ecs:eu-north-1:597088026916:task-definition/HeatScapeTask-Img:1",
+    "taskRoleArn": "arn:aws:iam::597088026916:role/ecsTaskExecutionRole",
+    "volumes": [],
+    "tags": []
+}
