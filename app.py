@@ -156,7 +156,7 @@ def calculate_area_endpoint():
     
     return jsonify(result), 200
 
-@app.route("api/segment/health", methods=["GET"])
+@app.route("api/health", methods=["GET"])
 def health_check():
     """Health check endpoint to verify the service is running"""
     global device

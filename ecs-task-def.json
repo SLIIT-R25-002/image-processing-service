@@ -1,7 +1,6 @@
 {
     "compatibilities": [
-        "EC2",
-        "MANAGED_INSTANCES"
+        "EC2"
     ],
     "containerDefinitions": [
         {
