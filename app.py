@@ -71,7 +71,7 @@ device = initialize_device()
 initialize_models()
 
 # ---------- Endpoint 1: Run analysis synchronously ----------
-@app.route("api/analyze", methods=["POST"])
+@app.route("api/segment/analyze", methods=["POST"])
 def analyze_image_endpoint():
     if "file" not in request.files:
         return jsonify({"error": "No file part"}), 400
@@ -87,7 +87,7 @@ def analyze_image_endpoint():
     return jsonify({"status": "SUCCESS", "result": result}), 200
 
 # ---------- Endpoint 2: Calculate area ----------
-@app.route("api/calculate_area", methods=["POST"])
+@app.route("api/segment/calculate_area", methods=["POST"])
 def calculate_area_endpoint():
     logger.info("=== Starting calculate_area_endpoint ===")
     
@@ -156,7 +156,7 @@ def calculate_area_endpoint():
     
     return jsonify(result), 200
 
-@app.route("api/health", methods=["GET"])
+@app.route("api/segment/health", methods=["GET"])
 def health_check():
     """Health check endpoint to verify the service is running"""
     global device
