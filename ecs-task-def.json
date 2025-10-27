@@ -27,7 +27,7 @@
                 {
                     "appProtocol": "http",
                     "containerPort": 5000,
-                    "hostPort": 5002,
+                    "hostPort": 5000,
                     "name": "5000-tcp",
                     "protocol": "tcp"
                 }
@@ -47,7 +47,7 @@
     "executionRoleArn": "arn:aws:iam::597088026916:role/ecsTaskExecutionRole",
     "family": "HeatScapeTask-Img",
     "memory": "3072",
-    "networkMode": "host",
+    "networkMode": "awsvpc",
     "placementConstraints": [],
     "registeredAt": "2025-10-24T20:12:12.019Z",
     "registeredBy": "arn:aws:iam::597088026916:root",
@@ -83,9 +83,7 @@
             "name": "com.amazonaws.ecs.capability.docker-remote-api.1.29"
         }
     ],
-    "requiresCompatibilities": [
-        "MANAGED_INSTANCES"
-    ],
+    "requiresCompatibilities": ["EC2"],
     "revision": 1,
     "runtimePlatform": {
         "cpuArchitecture": "X86_64",
