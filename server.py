@@ -36,4 +36,4 @@ def start_server():
         print(f"❌ Error starting ngrok: {e}")
 
 if __name__ == "__main__":
-    start_server()
+    run_app()
