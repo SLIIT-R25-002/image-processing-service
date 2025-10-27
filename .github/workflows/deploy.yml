@@ -12,16 +12,6 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Free disk space
-        uses: jlumbroso/free-disk-space@v1
-        with:
-          tool-cache: true
-          android: true
-          dotnet: true
-          haskell: true
-          large-packages: true
-          swap-storage: true
-
         # NEW: Ensure Python & pip are available (Ubuntu runners have them, this is just explicit)
       - name: Set up Python
         uses: actions/setup-python@v5

@@ -145,7 +145,7 @@ def _load_depth():
     try:
         print("📥 Loading depth processor...")
         # Using the base model configuration since we have vitb weights
-        _depth_processor = AutoImageProcessor.from_pretrained("depth-anything/Depth-Anything-V2-Base-hf")
+        _depth_processor = AutoImageProcessor.from_pretrained("depth-anything/Depth-Anything-V2-Small-hf")
         print(f"✅ Depth processor loaded successfully")
         print(f"📊 Processor config: {_depth_processor.__class__.__name__}")
         
@@ -159,7 +159,7 @@ def _load_depth():
         print("🧠 Loading depth model from local checkpoint...")
         # Load the model architecture from HuggingFace config
         _depth_model = AutoModelForDepthEstimation.from_pretrained(
-            "depth-anything/Depth-Anything-V2-Base-hf",
+            "depth-anything/Depth-Anything-V2-Small-hf",
             ignore_mismatched_sizes=True
         )
         

@@ -14,7 +14,7 @@ print("✅ Downloaded CLIP weights to ./weights")
 # Download Depth-Anything-V2 model
 print("Downloading Depth-Anything-V2 model...")
 depth_model = AutoModelForDepthEstimation.from_pretrained(
-    "depth-anything/Depth-Anything-V2-Base-hf",
+    "depth-anything/Depth-Anything-V2-Small-hf",
     ignore_mismatched_sizes=True
 )
 # Save the model weights
