@@ -27,7 +27,7 @@
                 {
                     "appProtocol": "http",
                     "containerPort": 5000,
-                    "hostPort": 5000,
+                    "hostPort": 5002,
                     "name": "5000-tcp",
                     "protocol": "tcp"
                 }

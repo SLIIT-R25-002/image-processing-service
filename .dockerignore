@@ -24,9 +24,9 @@ coverage.xml
 *.swp
 *.swo
 
-# Don't include model weights in build context - they should be mounted
-weights/
-uploads/
+# # Don't include model weights in build context - they should be mounted
+# weights/
+# uploads/
 
 # Environment files
 .env
