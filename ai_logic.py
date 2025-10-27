@@ -23,6 +23,7 @@ import open3d as o3d
 
 YOLO_MODEL_PATH = "/app/weights/best.pt"
 SAM_MODEL_PATH = "/app/weights/mobile_sam.pt"
+DEPTH_MODEL_PATH = "/app/weights/depth_anything_v2_vitb.pth"
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 CLIP_DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -134,15 +135,17 @@ def _load_clip():
     return _clip_model, _clip_preprocess
 
 def _load_depth():
-    """Load Depth-Anything-V2 model"""
-    print("🔧 Loading depth estimation model (Depth-Anything-V2)...")
+    """Load Depth-Anything-V2 model from local checkpoint"""
+    print("🔧 Loading depth estimation model (Depth-Anything-V2) from local file...")
     print(f"🎯 Target device: {DEVICE}")
+    print(f"📁 Model path: {DEPTH_MODEL_PATH}")
     
     global _depth_processor, _depth_model
     
     try:
         print("📥 Loading depth processor...")
-        _depth_processor = AutoImageProcessor.from_pretrained("depth-anything/Depth-Anything-V2-Small-hf")
+        # Using the base model configuration since we have vitb weights
+        _depth_processor = AutoImageProcessor.from_pretrained("depth-anything/Depth-Anything-V2-Base-hf")
         print(f"✅ Depth processor loaded successfully")
         print(f"📊 Processor config: {_depth_processor.__class__.__name__}")
         
@@ -153,8 +156,23 @@ def _load_depth():
         raise
     
     try:
-        print("🧠 Loading depth model...")
-        _depth_model = AutoModelForDepthEstimation.from_pretrained("depth-anything/Depth-Anything-V2-Small-hf").to(DEVICE)
+        print("🧠 Loading depth model from local checkpoint...")
+        # Load the model architecture from HuggingFace config
+        _depth_model = AutoModelForDepthEstimation.from_pretrained(
+            "depth-anything/Depth-Anything-V2-Base-hf",
+            ignore_mismatched_sizes=True
+        )
+        
+        # Load the local weights
+        if os.path.exists(DEPTH_MODEL_PATH):
+            print(f"📦 Loading weights from {DEPTH_MODEL_PATH}...")
+            state_dict = torch.load(DEPTH_MODEL_PATH, map_location="cpu")
+            _depth_model.load_state_dict(state_dict, strict=False)
+            print(f"✅ Local weights loaded successfully")
+        else:
+            print(f"⚠️ Warning: Local weights file not found at {DEPTH_MODEL_PATH}")
+            print(f"   Using default pretrained weights instead")
+        
         print(f"✅ Depth model loaded successfully")
         print(f"📊 Model type: {_depth_model.__class__.__name__}")
         

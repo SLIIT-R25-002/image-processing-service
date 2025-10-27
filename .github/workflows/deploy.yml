@@ -8,63 +8,69 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    
+
     steps:
-    - uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
-      # NEW: Ensure Python & pip are available (Ubuntu runners have them, this is just explicit)
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
+        # NEW: Ensure Python & pip are available (Ubuntu runners have them, this is just explicit)
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
 
-    # NEW: Install CLIP on runner so download.py can fetch the weights
-    - name: Install CLIP (runner)
-      run: |
-        python -m pip install --upgrade pip
-        pip install git+https://github.com/openai/CLIP.git
+      # NEW: Install CLIP on runner so download.py can fetch the weights
+      - name: Install CLIP (runner)
+        run: |
+          python -m pip install --upgrade pip
+          pip install git+https://github.com/openai/CLIP.git
 
-    # NEW: Download the ViT-B/32 weight into ./weights
-    - name: Download CLIP weights
-      run: |
-        python download.py
-        ls -lh weights
+      # NEW: Install dependencies for Depth-Anything-V2 model
+      - name: Install Depth Model dependencies (runner)
+        run: |
+          pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          pip install transformers
 
-    - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: ${{ secrets.AWS_REGION }}
+      # NEW: Download the ViT-B/32 weight and Depth-Anything-V2 model into ./weights
+      - name: Download CLIP and Depth model weights
+        run: |
+          python download.py
+          ls -lh weights
 
-    - name: Login to Amazon ECR
-      id: ecr-login
-      uses: aws-actions/amazon-ecr-login@v2
-      
-    - name: Build, tag, and push image
-      env:
-        ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
-        ECR_REPOSITORY: image-processing-service
-        IMAGE_TAG: latest
-      run: |
-        # Build from the backend folder where the Dockerfile actually lives
-        docker build -t $ECR_REPOSITORY:$IMAGE_TAG .
-        docker tag $ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-        echo "IMAGE_URI=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_ENV
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
 
-    - name: Render Amazon ECS task definition
-      id: render
-      uses: aws-actions/amazon-ecs-render-task-definition@v1
-      with:
-        task-definition: ecs-task-def.json
-        container-name: image-processing-service
-        image: ${{ env.IMAGE_URI }}
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
 
-    - name: Deploy ECS service
-      uses: aws-actions/amazon-ecs-deploy-task-definition@v1
-      with:
-        task-definition: ${{ steps.render.outputs.task-definition }}
-        service: image-processing-service
-        cluster: HeatScapeCluster
-        wait-for-service-stability: true
+      - name: Build, tag, and push image
+        env:
+          ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          ECR_REPOSITORY: image-processing-service
+          IMAGE_TAG: latest
+        run: |
+          # Build from the backend folder where the Dockerfile actually lives
+          docker build -t $ECR_REPOSITORY:$IMAGE_TAG .
+          docker tag $ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          echo "IMAGE_URI=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_ENV
+
+      - name: Render Amazon ECS task definition
+        id: render
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: ecs-task-def.json
+          container-name: image-processing-service
+          image: ${{ env.IMAGE_URI }}
+
+      - name: Deploy ECS service
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          task-definition: ${{ steps.render.outputs.task-definition }}
+          service: image-processing-service
+          cluster: HeatScapeCluster
+          wait-for-service-stability: true
