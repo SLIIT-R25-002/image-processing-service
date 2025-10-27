@@ -28,8 +28,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN pip install git+https://github.com/openai/CLIP.git
 RUN pip install git+https://github.com/ChaoningZhang/MobileSAM.git
 
-# Copy application code
+# Copy application code 
 COPY . .
+
+RUN mkdir -p /root/.cache/clip
+COPY weights/ /root/.cache/clip/
 
 # Create necessary directories
 RUN mkdir -p uploads weights
