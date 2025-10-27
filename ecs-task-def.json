@@ -8,13 +8,13 @@
             "environment": [],
             "environmentFiles": [],
             "essential": true,
-            "image": "597088026916.dkr.ecr.eu-north-1.amazonaws.com/image-processing-service:latest",
+            "image": "597088026916.dkr.ecr.us-east-1.amazonaws.com/image-processing-service:latest",
             "logConfiguration": {
                 "logDriver": "awslogs",
                 "options": {
                     "awslogs-group": "/ecs/HeatScapeTask-Img",
                     "awslogs-create-group": "true",
-                    "awslogs-region": "eu-north-1",
+                    "awslogs-region": "us-east-1",
                     "awslogs-stream-prefix": "ecs"
                 },
                 "secretOptions": []
@@ -90,7 +90,7 @@
         "operatingSystemFamily": "LINUX"
     },
     "status": "ACTIVE",
-    "taskDefinitionArn": "arn:aws:ecs:eu-north-1:597088026916:task-definition/HeatScapeTask-Img:1",
+    "taskDefinitionArn": "arn:aws:ecs:us-east-1:597088026916:task-definition/HeatScapeTask-Img:1",
     "taskRoleArn": "arn:aws:iam::597088026916:role/ecsTaskExecutionRole",
     "volumes": [],
     "tags": []
