@@ -47,7 +47,7 @@
     "executionRoleArn": "arn:aws:iam::597088026916:role/ecsTaskExecutionRole",
     "family": "HeatScapeTask-Img",
     "memory": "3072",
-    "networkMode": "awsvpc",
+    "networkMode": "host",
     "placementConstraints": [],
     "registeredAt": "2025-10-24T20:12:12.019Z",
     "registeredBy": "arn:aws:iam::597088026916:root",
