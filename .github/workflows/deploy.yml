@@ -35,18 +35,18 @@ jobs:
         docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
         echo "IMAGE_URI=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_ENV
 
-    # - name: Render Amazon ECS task definition
-    #   id: render
-    #   uses: aws-actions/amazon-ecs-render-task-definition@v1
-    #   with:
-    #     task-definition: ecs-task-def.json
-    #     container-name: image-processing-service
-    #     image: ${{ env.IMAGE_URI }}
+    - name: Render Amazon ECS task definition
+      id: render
+      uses: aws-actions/amazon-ecs-render-task-definition@v1
+      with:
+        task-definition: ecs-task-def.json
+        container-name: image-processing-service
+        image: ${{ env.IMAGE_URI }}
 
-    # - name: Deploy ECS service
-    #   uses: aws-actions/amazon-ecs-deploy-task-definition@v1
-    #   with:
-    #     task-definition: ${{ steps.render.outputs.task-definition }}
-    #     service: image-processing-service
-    #     cluster: HeatScapeCluster
-    #     wait-for-service-stability: true
+    - name: Deploy ECS service
+      uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+      with:
+        task-definition: ${{ steps.render.outputs.task-definition }}
+        service: image-processing-service
+        cluster: HeatScapeCluster
+        wait-for-service-stability: true
